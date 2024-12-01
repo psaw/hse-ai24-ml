@@ -1,118 +1,113 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException
 from typing import List
-import dill as pickle  
-import numpy as np
+import dill as pickle
 import pandas as pd
-from ml.classes import DropColumns, FirstWordExtractor, FloatConverter, IntConverter, MedianImputer
+import logging
+
+from model.item import Item, Items
 
 
+# включаем журналирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-
-# Определяем модель для одного объекта
-class Item(BaseModel):
-    name: str
-    year: int
-    selling_price: int
-    km_driven: int
-    fuel: str
-    seller_type: str
-    transmission: str
-    owner: str
-    mileage: str
-    engine: str
-    max_power: str
-    torque: str
-    seats: float
-
-# Определяем модель для списка объектов
-class Items(BaseModel):
-    objects: List[Item]
 
 app = FastAPI()
 
 # Загружаем сохранённые модели
-# TODO: разобраться с основным пайплайном - не применился OHE...
 best_ridge = pickle.load(open("./ml/best_ridge.pkl", "rb"))
 pipe_preprocess = pickle.load(open("./ml/pipe_preprocess2.pkl", "rb"))
 ohe_task15 = pickle.load(open("./ml/ohe_task15.pkl", "rb"))
 
-@app.get("/")
-async def top():
-    return {"message": "Hello World"}
- 
+
 @app.post("/predict_item")
 def predict_item(item: Item) -> float:
- 
-    # Преобразуем объект item в словарь и затем в DataFrame
-    print("==============")
-    print(item)
-    print("==============")
+    '''Предсказание цены автомобиля.
 
-    item_dict = item.model_dump()  # Преобразуем объект в словарь
-    print(item_dict)
-    print("==============")
+    Args:
+        item (Item): объект для предсказания
 
-    df = pd.DataFrame.from_records([item_dict])  # Создаем DataFrame из словаря
-    print(df.head(1))
-    print("==============")
+    Returns:
+        float: предсказанная цена
+    '''
+    logger.info(f"Получен объект для предсказания:\n {item}")
+    try:
+        # Преобразуем объект item в словарь и затем в DataFrame
+        X = preprocess(item)
+        # Делаем предсказание с помощью модели Ridge
+        y = best_ridge.predict(X)
+        logger.info(f"Предсказание: {y[0]}")
+        return float(y[0])
+    except Exception as e:
+        logger.error(f"Ошибка во время предсказания: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/predict_items")
+def predict_items(items: Items) -> List[float]:
+    '''Предсказание цены автомобилей.
+
+    Args:
+        items (Items): список объектов для предсказания
+
+    Returns:
+        List[float]: список предсказанных цен
+    '''
+    logger.info(f"Получен список объектов для предсказания:\n {items}")
+    predictions = []
+
+    for item in items.objects:
+        try:
+            # Преобразуем объект item в словарь и затем в DataFrame
+            x_i = preprocess(item)
+            # Делаем предсказание с помощью модели Ridge
+            y_i = best_ridge.predict(x_i)
+            predictions.append(float(y_i[0]))  # формируем результат
+            logger.info(f"Предсказание: {y_i[0]}")
+        except Exception as e:
+            logger.error(f"Ошибка во время предсказания: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    logger.info(f"Предсказания: {predictions}")
+    return predictions
+
+
+def preprocess(item: Item) -> pd.DataFrame:
+    '''Пайплайн предобработки для одного объекта.
+
+    Args:
+        item (Item): объект для предсказания
+
+    Returns:
+        pd.DataFrame: DataFrame с одной строкой и колонками, нужными модели
+    '''
+    # Преобразуем объект в словарь
+    item_dict = item.model_dump()
+    # Создаем DataFrame из словаря
+    df = pd.DataFrame.from_records([item_dict])
 
     # Применяем предварительную обработку к признакам
     X_test = pipe_preprocess.transform(df)
-    print(X_test.head(1))
-    print("==============")
 
+    # Применяем one-hot-encoding к категориальным признакам
     X_test_cat_ohe = pd.DataFrame(
         ohe_task15.transform(X_test[ohe_task15.feature_names_in_]),
         columns=ohe_task15.get_feature_names_out(),
         index=X_test.index
     )
-    print(X_test_cat_ohe.head(1))
-    print("==============")
 
-    X_test_ready = pd.concat([X_test,  X_test_cat_ohe], axis=1).drop(ohe_task15.feature_names_in_, axis=1)
-    print(X_test_ready.head(1))
-    print("==============")
+    # TODO: добавить в `pipe_preprocess` ColumnTransformer
 
+    # Объединяем категориальные признаки с остальными
+    X_test_ready = pd.concat([X_test,  X_test_cat_ohe], axis=1)
+    X_test_ready = X_test_ready.drop(ohe_task15.feature_names_in_, axis=1)
+
+    # Удаляем ненужные признаки
     X_test_ready.drop(columns=['name', 'selling_price'], inplace=True, axis=1)
-    print(X_test_ready.head(1))
-    print("==============")
-    
-    # Делаем предсказание с помощью модели Ridge
-    y_pred = best_ridge.predict(X_test_ready)
-    print(y_pred)
-    print("==============")
-    
-    return float(y_pred[0])  # Возвращаем предсказанное значение
 
-@app.post("/predict_items")
-def predict_items(items: Items) -> List[float]:
-    predictions = []
-    
-    for item in items.objects:
-        features = np.array([
-            item.year,
-            item.selling_price,
-            item.km_driven,
-            item.fuel,
-            item.seller_type,
-            item.transmission,
-            item.owner,
-            item.mileage,
-            item.engine,
-            item.max_power,
-            item.torque,
-            item.seats
-        ]).reshape(1, -1)
+    return X_test_ready  # Возвращаем предсказанное значение
 
-        X_test = pipe_preprocess.transform(features)
-        y_pred = best_ridge.predict(X_test)
-        
-        predictions.append(float(y_pred[0]))  # Добавляем предсказание в список
-    
-    return predictions
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
