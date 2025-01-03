@@ -167,3 +167,5 @@ cython_debug/
 *.mp4
 *.m4v
 data/
+
+.*
