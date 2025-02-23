@@ -1,0 +1,5 @@
+[core]
+    remote = team22
+['remote "team22"']
+    url = s3://hse-ai24-team-22-data/team-22/data
+    credentialpath = /Users/yukonoff/.aws/team22

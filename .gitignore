@@ -170,3 +170,6 @@ data/
 
 .*
 catboost_info/
+
+# Do not ignore DVC files
+!.dvc
