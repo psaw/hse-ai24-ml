@@ -1,5 +1,5 @@
 outs:
-- md5: 66038865f571a3e293966cf9c07eb332
-  size: 43049524
+- md5: 1ce2a6ab2a0f9b04c587108cba6d2d6e
+  size: 60556492
   hash: md5
   path: campaign_analysis.json
