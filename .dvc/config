@@ -2,5 +2,5 @@
     remote = team22
 ['remote "team22"']
     url = s3://hse-ai24-team-22-data/dvc
-    credentialpath = /Users/yukonoff/.aws/team22
+    credentialpath = ~/.aws/team22
     region = ru-central1
