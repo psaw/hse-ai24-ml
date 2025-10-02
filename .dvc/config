@@ -1,5 +1,6 @@
 [core]
     remote = team22
+    autostage = true
 ['remote "team22"']
     url = s3://hse-ai24-team-22-data/dvc
     credentialpath = ~/.aws/team22
